@@ -1,0 +1,18 @@
+[project]
+name = "sentinelops"
+version = "0.1.0"
+description = "Autonomous Bug Triage & Fix Agent"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "httpx",
+    "langgraph",
+    "langchain-openai",
+    "mcp",
+    "langchain-mcp-adapters",
+    "psycopg2-binary",
+    "pgvector",
+    "sqlalchemy"
+]

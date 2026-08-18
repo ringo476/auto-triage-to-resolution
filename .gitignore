@@ -1,0 +1,15 @@
+# Secrets & Environment
+.env
+*.env
+
+# Python / Virtual Environment
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# IDE / Editor artifacts
+.vscode/
+.idea/
+*.log

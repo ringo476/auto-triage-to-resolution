@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+httpx
+langgraph
+langchain-openai
+mcp
+langchain-mcp-adapters
+psycopg2-binary
+pgvector
+sqlalchemy
