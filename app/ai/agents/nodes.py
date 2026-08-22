@@ -4,10 +4,10 @@ from typing import Literal
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_mcp_adapters.tools import load_mcp_tools
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.ai.prompts import SANDBOX_HUMAN_TEMPLATE, TRIAGE_HUMAN_TEMPLATE
 from app.ai.state import AgentState
@@ -46,15 +46,15 @@ def rag_node(state: AgentState) -> dict:
 
 async def repro_node(state: AgentState) -> dict:
     server_params = StdioServerParameters(
-        command="python3",
-        args=["-m", "app.mcp_server.server"]
+        command="docker",
+        args=["run", "-i", "--rm", "--network=none", f"-v={state['target_repo_path']}:/app/workspace", "mcp-sandbox-image"]
     )
     async with stdio_client(server_params) as (read_stream, write_stream), \
             ClientSession(read_stream, write_stream) as session:
         await session.initialize()
         
         langchain_tools = await load_mcp_tools(session)
-        llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        llm = ChatOllama(model="qwen2.5-coder:7b", temperature=0)
         bind_llm = llm.bind_tools(langchain_tools)
         
         repro_skill_text = load_skill("repro_skill.md")
@@ -91,7 +91,7 @@ async def repro_node(state: AgentState) -> dict:
                 
                 try:
                     tool_output = await selected_tool.ainvoke(tool_call["args"])
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     tool_output = f"Tool Execution Error: {e!s}"
                 
                 tool_message = ToolMessage(
@@ -118,7 +118,7 @@ async def triage_node(state: AgentState) -> dict:
     Evaluates execution logs and RAG context against triage_skill.md SOP
     to output a structured routing decision (USER_ERROR, AUTO_PR, or JIRA_TICKET).
     """
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatOllama(model="qwen2.5-coder:7b", temperature=0)
     triage_skill_text = load_skill("triage_skill.md")
     
     triage_prompt = ChatPromptTemplate.from_messages([
@@ -129,11 +129,24 @@ async def triage_node(state: AgentState) -> dict:
     structured_llm = llm.with_structured_output(TriageDecision)
     triage_chain = triage_prompt | structured_llm
     
-    response = await triage_chain.ainvoke({
-        "raw_issue_description": state["raw_issue_description"],
-        "rag_context": state["rag_context"],
-        "sandbox_execution_logs": state["sandbox_execution_logs"]
-    })
+    response = None
+    last_error = None
+    for _ in range(3):
+        try:
+            response = await triage_chain.ainvoke({
+                "raw_issue_description": state["raw_issue_description"],
+                "rag_context": state["rag_context"],
+                "sandbox_execution_logs": state["sandbox_execution_logs"]
+            })
+            break
+        except ValidationError as e:
+            last_error = str(e)
+            
+    if not response:
+        return {
+            "triage_action": "USER_ERROR",
+            "root_cause_analysis": f"Failed to parse LLM response. Error: {last_error}"
+        }
     
     return {
         "triage_action": response.action,

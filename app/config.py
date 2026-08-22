@@ -7,8 +7,10 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
 
-    # OpenAI / LLM Credentials
-    OPENAI_API_KEY: str  # No default = mandatory
+    # Ollama / LLM Configuration (runs locally — no API key needed)
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "qwen2.5-coder:7b"
+    OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
 
     # Database Settings (Postgres + pgvector)
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/triage_db"

@@ -9,10 +9,13 @@ dependencies = [
     "pydantic",
     "httpx",
     "langgraph",
-    "langchain-openai",
+    "langchain-ollama",
+    "ollama",
     "mcp",
     "langchain-mcp-adapters",
     "psycopg2-binary",
     "pgvector",
-    "sqlalchemy"
+    "sqlalchemy",
+    "tenacity",
+    "asyncpg"
 ]

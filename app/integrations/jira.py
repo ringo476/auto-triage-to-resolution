@@ -1,12 +1,14 @@
 import os
 
 import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 JIRA_DOMAIN = os.getenv("JIRA_DOMAIN")            # e.g., "yourcompany"
 JIRA_EMAIL = os.getenv("JIRA_EMAIL")              # e.g., "bot@yourcompany.com"
 JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN")      # Your Atlassian API token
 JIRA_PROJECT_KEY = os.getenv("JIRA_PROJECT_KEY")  # e.g., "ENG"
 
+@retry(wait=wait_exponential(multiplier=2, min=2, max=10), stop=stop_after_attempt(3))
 async def create_jira_ticket(summary: str, description: str, issue_type: str = "Bug") -> str:
     """
     Creates a Jira issue and returns the direct URL to the ticket.
@@ -38,5 +40,5 @@ async def create_jira_ticket(summary: str, description: str, issue_type: str = "
             return f"https://{JIRA_DOMAIN}.atlassian.net/browse/{data.get('key')}"
         except httpx.HTTPStatusError as e:
             return f"Jira API Error: {e.response.text}"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return f"Request Error: {e!s}"

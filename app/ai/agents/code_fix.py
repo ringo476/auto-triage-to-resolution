@@ -2,7 +2,7 @@
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_mcp_adapters.tools import load_mcp_tools
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
@@ -18,15 +18,15 @@ async def code_fix_node(state: AgentState) -> dict:
     generate a patch, verify the fix in the sandbox, and open a GitHub PR.
     """
     server_params = StdioServerParameters(
-        command="python3",
-        args=["-m", "app.mcp_server.server"]
+        command="docker",
+        args=["run", "-i", "--rm", "--network=none", f"-v={state['target_repo_path']}:/app/workspace", "mcp-sandbox-image"]
     )
     async with stdio_client(server_params) as (read_stream, write_stream), \
             ClientSession(read_stream, write_stream) as session:
         await session.initialize()
         
         langchain_tools = await load_mcp_tools(session)
-        llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        llm = ChatOllama(model="qwen2.5-coder:7b", temperature=0)
         bind_llm = llm.bind_tools(langchain_tools)
         
         code_fix_skill_text = load_skill("code_fix_skill.md")
@@ -55,7 +55,7 @@ async def code_fix_node(state: AgentState) -> dict:
                 
                 try:
                     tool_output = await selected_tool.ainvoke(tool_call["args"])
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     tool_output = f"Tool Execution Error: {e!s}"
                 
                 new_messages.append(ToolMessage(

@@ -1,7 +1,8 @@
 from langgraph.graph import END, START, StateGraph
-from app.ai.state import AgentState
+
 from app.ai.agents.code_fix import code_fix_node
 from app.ai.agents.nodes import rag_node, repro_node, triage_node
+from app.ai.state import AgentState
 
 workflow=StateGraph(AgentState)
 
@@ -25,7 +26,10 @@ workflow.add_node(code_fix_node,"fix")
 workflow.add_edge(START,"researcher")
 workflow.add_edge("researcher","reproduce")
 workflow.add_edge("reproduce","decision")
-workflow.add_conditional_edge("decision",route_triage)
+workflow.add_conditional_edges("decision",route_triage)
 workflow.add_edge("fix",END)
 
-app_graph=workflow.compile()
+from langgraph.checkpoint.memory import MemorySaver
+
+memory = MemorySaver()
+app_graph=workflow.compile(checkpointer=memory)

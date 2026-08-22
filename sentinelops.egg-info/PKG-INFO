@@ -8,9 +8,12 @@ Requires-Dist: uvicorn
 Requires-Dist: pydantic
 Requires-Dist: httpx
 Requires-Dist: langgraph
-Requires-Dist: langchain-openai
+Requires-Dist: langchain-ollama
+Requires-Dist: ollama
 Requires-Dist: mcp
 Requires-Dist: langchain-mcp-adapters
 Requires-Dist: psycopg2-binary
 Requires-Dist: pgvector
 Requires-Dist: sqlalchemy
+Requires-Dist: tenacity
+Requires-Dist: asyncpg

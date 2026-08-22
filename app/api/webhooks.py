@@ -9,6 +9,7 @@ router = APIRouter()
 # 1. Define the expected incoming JSON payload
 class BugReportPayload(BaseModel):
     ticket_id: str = Field(..., description="The ID of the ticket (e.g., BUG-101)")
+    target_repo_path: str = Field(..., description="Absolute path on the host to the external codebase being debugged")
     raw_issue_description: str = Field(..., description="The actual text of the bug report")
     reporter_email: str = Field(..., description="Email of the user or system reporting the bug")
     source_channel: str = Field(default="api", description="Where this came from (slack, datadog, etc.)")
@@ -21,6 +22,7 @@ async def trigger_bug_triage(payload:BugReportPayload):
     try:
         initial_state={
             "ticket_id":payload.ticket_id,
+            "target_repo_path":payload.target_repo_path,
             "raw_issue_description":payload.raw_issue_description,
             "reporter_email":payload.reporter_email,
             "source_channel":payload.source_channel
@@ -33,5 +35,5 @@ async def trigger_bug_triage(payload:BugReportPayload):
             "root_cause_analysis": final_state.get("root_cause_analysis", "N/A"),
             "pull_request_url": final_state.get("github_pr_url", "No PR generated")
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500,detail=f"Graph Execution Failed: {e!s}")

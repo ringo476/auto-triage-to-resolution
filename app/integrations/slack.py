@@ -31,6 +31,6 @@ async def send_slack_message(channel_id: str, text: str) -> bool:
                 print(f"Slack API Error:{data.get('ok')}")
                 return False
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Request error: {e!s}")
             return False

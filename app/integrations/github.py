@@ -2,6 +2,7 @@ import asyncio
 import os
 
 import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_API_URL = "https://api.github.com"
@@ -24,7 +25,7 @@ async def commit_and_push_changes(branch_name: str, commit_message: str) -> bool
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await process.communicate()
+        _stdout, stderr = await process.communicate()
         
         # If any git command fails (non-zero exit code), abort the sequence
         if process.returncode != 0:
@@ -41,6 +42,7 @@ async def commit_and_push_changes(branch_name: str, commit_message: str) -> bool
             
     return True
 
+@retry(wait=wait_exponential(multiplier=2, min=2, max=10), stop=stop_after_attempt(3))
 async def create_pull_request(repo_name: str, branch_name: str, base_branch: str, title: str, body: str) -> str:
     """
     Hits the GitHub REST API to open a PR for the branch we just pushed.
@@ -69,5 +71,5 @@ async def create_pull_request(repo_name: str, branch_name: str, base_branch: str
             return data.get("html_url", "PR created, but no URL returned.")
         except httpx.HTTPStatusError as e:
             return f"GitHub API Error: {e.response.text}"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return f"Request Error: {e!s}"

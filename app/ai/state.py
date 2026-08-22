@@ -11,6 +11,7 @@ class AgentState(TypedDict):
     """
     # 1. Ingestion Data (From Webhook)
     ticket_id: str
+    target_repo_path: str  # The absolute path to the external repo to debug on the host machine
     raw_issue_description: str
     reporter_email: str
     source_channel: str  # e.g., "slack", "zendesk"

@@ -1,0 +1,24 @@
+FROM python:3.11-slim
+
+# Create a non-root user for security
+RUN useradd -m sandboxuser
+
+# Install dependencies needed for MCP and tools
+RUN pip install --no-cache-dir mcp fastmcp
+
+# Copy only the MCP server logic to a hidden system path
+WORKDIR /opt/mcp
+COPY app/mcp_server/ /opt/mcp/app/mcp_server/
+
+# Ensure Python can find the app module
+ENV PYTHONPATH=/opt/mcp
+
+# Leave /app/workspace completely empty for the external target repo mount
+# The target repo will be mounted here dynamically via docker run -v
+WORKDIR /app/workspace
+
+# Switch to the non-root user
+USER sandboxuser
+
+# Run the MCP server
+ENTRYPOINT ["python3", "-m", "app.mcp_server.server"]
