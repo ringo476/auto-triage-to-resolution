@@ -1,4 +1,3 @@
-import operator
 from typing import Annotated, TypedDict
 
 from langchain_core.messages import BaseMessage
@@ -15,6 +14,7 @@ class AgentState(TypedDict):
     raw_issue_description: str
     reporter_email: str
     source_channel: str  # e.g., "slack", "zendesk"
+    slack_channel_id: str | None  # Slack channel to reply into, if source_channel == "slack"
 
     # 2. Context Researcher Agent Outputs
     rag_context: str
@@ -22,14 +22,15 @@ class AgentState(TypedDict):
     # 3. Diagnostic / Sandbox Executor Agent Outputs
     is_reproducible: bool
     reproduction_command: str | None
-    sandbox_execution_logs: Annotated[list[str],operator.add]
+    sandbox_execution_logs: str
 
     # 4. Triage & Routing Decisions
     # Action options: "USER_ERROR", "JIRA_TICKET", "AUTO_PR"
     triage_action: str | None
-    triage_reasoning: str | None
+    root_cause_analysis: str | None
 
     # 5. External System Results
+    proposed_patch: str | None
     jira_issue_key: str | None
     github_issue_url: str | None
     github_pr_url: str | None

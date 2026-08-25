@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "SentinelOps AI Engine"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
+    DEFAULT_TARGET_REPO: str = "C:/pythonlogger"
 
     # Ollama / LLM Configuration (runs locally — no API key needed)
     OLLAMA_BASE_URL: str = "http://localhost:11434"
@@ -32,6 +33,13 @@ class Settings(BaseSettings):
     # FastMCP Server / Sandbox Configuration
     MCP_SERVER_HOST: str = "0.0.0.0"
     MCP_SERVER_PORT: int = 8001
+
+    # Webhook Authentication
+    # Shared-secret header required on /api/webhook/bug_report (see app/api/webhooks.py).
+    WEBHOOK_SECRET: str
+
+    # GitHub PR defaults
+    GITHUB_BASE_BRANCH: str = "main"
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,35 +1,41 @@
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from app.ai.agents.code_fix import code_fix_node
-from app.ai.agents.nodes import rag_node, repro_node, triage_node
+from app.ai.agents.nodes import jira_node, rag_node, repro_node, slack_node, triage_node
 from app.ai.state import AgentState
 
-workflow=StateGraph(AgentState)
+workflow = StateGraph(AgentState)
+
 
 def route_triage(state: AgentState) -> str:
     """Reads the decision from the triage_node and directs traffic."""
     action = state.get("triage_action")
-    
+
     if action == "AUTO_PR":
-        return "fix"               # Send to code_fix_node
+        return "fix"
     elif action == "JIRA_TICKET":
-        return END                 # Or send to a "jira_node" if you build one
+        return "jira"
     elif action == "USER_ERROR":
-        return END                 # Or send to a "slack_node" if you build one
-    
-    return END # Safety fallback
+        return "notify_user"
 
-workflow.add_node(rag_node,"researcher")
-workflow.add_node(repro_node,"reproduce")
-workflow.add_node(triage_node,"decision")
-workflow.add_node(code_fix_node,"fix")
-workflow.add_edge(START,"researcher")
-workflow.add_edge("researcher","reproduce")
-workflow.add_edge("reproduce","decision")
-workflow.add_conditional_edges("decision",route_triage)
-workflow.add_edge("fix",END)
+    return END  # Safety fallback
 
-from langgraph.checkpoint.memory import MemorySaver
+
+workflow.add_node("researcher", rag_node)
+workflow.add_node("reproduce", repro_node)
+workflow.add_node("decision", triage_node)
+workflow.add_node("fix", code_fix_node)
+workflow.add_node("jira", jira_node)
+workflow.add_node("notify_user", slack_node)
+
+workflow.add_edge(START, "researcher")
+workflow.add_edge("researcher", "reproduce")
+workflow.add_edge("reproduce", "decision")
+workflow.add_conditional_edges("decision", route_triage)
+workflow.add_edge("fix", END)
+workflow.add_edge("jira", END)
+workflow.add_edge("notify_user", END)
 
 memory = MemorySaver()
-app_graph=workflow.compile(checkpointer=memory)
+app_graph = workflow.compile(checkpointer=memory)

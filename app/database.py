@@ -5,25 +5,25 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import settings
 
 engine = create_async_engine(settings.DATABASE_URL, echo=False)
-Sessionlocal = async_sessionmaker(autocommit=False, expire_on_commit=False, bind=engine)
+SessionLocal = async_sessionmaker(autocommit=False, expire_on_commit=False, bind=engine)
 
-# Use Ollama's async client for open-source embeddings (nomic-embed-text)
-embed_client = ollama.AsyncClient()
+# Use Ollama's async client for open-source embeddings, pointed at the configured Ollama host
+embed_client = ollama.AsyncClient(host=settings.OLLAMA_BASE_URL)
 
 
 async def get_db_session():
-    async with Sessionlocal() as session:
+    async with SessionLocal() as session:
         try:
             yield session
-            await session.commit()        
+            await session.commit()
         except Exception:
             await session.rollback()
             raise
 
 
 async def _get_embedding(text_input: str) -> list[float]:
-    """Generates an embedding vector using the open-source nomic-embed-text model via Ollama."""
-    response = await embed_client.embed(model="nomic-embed-text", input=text_input)
+    """Generates an embedding vector using the configured Ollama embedding model."""
+    response = await embed_client.embed(model=settings.OLLAMA_EMBED_MODEL, input=text_input)
     return response["embeddings"][0]
 
 
@@ -37,7 +37,7 @@ async def search_knowledge_base(query: str, limit: int = 3) -> str:
         ORDER BY embedding <=> :vector_str::vector
         LIMIT :limit;        
     """)
-    async with Sessionlocal() as session:
+    async with SessionLocal() as session:
         result = await session.execute(sql_query, {"vector_str": vector_str, "limit": limit})
         matched_rows = result.fetchall()
         contexts = [row[0] for row in matched_rows]
@@ -51,7 +51,7 @@ async def seed_data(documents: list[str]):
     Takes a list of strings (e.g. past Jira tickets or documentation) and 
     embeds them into the pgvector database so the rag_node can find them.
     """
-    async with Sessionlocal() as session:
+    async with SessionLocal() as session:
         for doc in documents:
             # 1. Generate the embedding vector using open-source model
             embedding = await _get_embedding(doc)

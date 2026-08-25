@@ -7,6 +7,8 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "pydantic",
+    "pydantic-settings",
+    "python-multipart",
     "httpx",
     "langgraph",
     "langchain-ollama",
@@ -19,3 +21,6 @@ dependencies = [
     "tenacity",
     "asyncpg"
 ]
+
+[project.optional-dependencies]
+test = ["pytest"]

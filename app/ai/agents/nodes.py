@@ -3,15 +3,16 @@ from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_ollama import ChatOllama
-from mcp.client.session import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
+from app.ai.mcp_runtime import run_tool_loop, sandbox_session
 from app.ai.prompts import SANDBOX_HUMAN_TEMPLATE, TRIAGE_HUMAN_TEMPLATE
 from app.ai.state import AgentState
+from app.config import settings
 from app.database import search_knowledge_base
+from app.integrations.jira import create_jira_ticket
+from app.integrations.slack import send_slack_message
 
 
 # --- HELPER: Dynamic Skill Loader ---
@@ -37,28 +38,20 @@ class TriageDecision(BaseModel):
 
 # --- LANGGRAPH NODES ---
 
-def rag_node(state: AgentState) -> dict:
+async def rag_node(state: AgentState) -> dict:
     """Retrieves relevant API schemas, docs, or past tickets from pgvector."""
     doc = state["raw_issue_description"]
-    retrieved_docs = search_knowledge_base(doc)
+    retrieved_docs = await search_knowledge_base(doc)
     return {"rag_context": retrieved_docs}
 
 
 async def repro_node(state: AgentState) -> dict:
-    server_params = StdioServerParameters(
-        command="docker",
-        args=["run", "-i", "--rm", "--network=none", f"-v={state['target_repo_path']}:/app/workspace", "mcp-sandbox-image"]
-    )
-    async with stdio_client(server_params) as (read_stream, write_stream), \
-            ClientSession(read_stream, write_stream) as session:
-        await session.initialize()
-        
-        langchain_tools = await load_mcp_tools(session)
-        llm = ChatOllama(model="qwen2.5-coder:7b", temperature=0)
-        bind_llm = llm.bind_tools(langchain_tools)
-        
+    async with sandbox_session(state["target_repo_path"]) as tools:
+        llm = ChatOllama(model=settings.OLLAMA_MODEL, temperature=0)
+        bind_llm = llm.bind_tools(tools)
+
         repro_skill_text = load_skill("repro_skill.md")
-        
+
         # 1. We read the existing global messages from the state (if any)
         # and append our System and Human prompts to start the context.
         current_messages = state.get("messages", []) + [
@@ -68,45 +61,13 @@ async def repro_node(state: AgentState) -> dict:
                 rag_context=state["rag_context"]
             ))
         ]
-        
-        # 2. Create a list to track ONLY the new messages generated in this node
-        new_messages_to_return = []
-        
-        max_turns = 5
-        for turn in range(max_turns):
-            # LLM reads the full history and makes a decision
-            ai_response = await bind_llm.ainvoke(current_messages)
-            
-            # Append to our running execution lists
-            current_messages.append(ai_response)
-            new_messages_to_return.append(ai_response)
-            
-            # The Stopping Condition: If no tools are called, break the loop.
-            if not ai_response.tool_calls:
-                break
-            
-            # Execute the tools the LLM requested
-            for tool_call in ai_response.tool_calls:
-                selected_tool = next(t for t in langchain_tools if t.name == tool_call["name"])
-                
-                try:
-                    tool_output = await selected_tool.ainvoke(tool_call["args"])
-                except Exception as e:  # noqa: BLE001
-                    tool_output = f"Tool Execution Error: {e!s}"
-                
-                tool_message = ToolMessage(
-                    content=str(tool_output),
-                    tool_call_id=tool_call["id"]
-                )
-                
-                # Append the tool result so the LLM sees it on the next turn
-                current_messages.append(tool_message)
-                new_messages_to_return.append(tool_message)
-        
+
+        new_messages_to_return = await run_tool_loop(bind_llm, tools, current_messages)
+
         # Extract just the raw tool strings for the triage node to read easily
         execution_logs = "\n".join([m.content for m in new_messages_to_return if isinstance(m, ToolMessage)])
-        
-        # 3. PROPER PATTERN: Return BOTH the logs and the new message history
+
+        # 2. PROPER PATTERN: Return BOTH the logs and the new message history
         return {
             "sandbox_execution_logs": execution_logs or "No logs produced.",
             "messages": new_messages_to_return  # LangGraph will now auto-append these globally!
@@ -118,19 +79,21 @@ async def triage_node(state: AgentState) -> dict:
     Evaluates execution logs and RAG context against triage_skill.md SOP
     to output a structured routing decision (USER_ERROR, AUTO_PR, or JIRA_TICKET).
     """
-    llm = ChatOllama(model="qwen2.5-coder:7b", temperature=0)
+    llm = ChatOllama(model=settings.OLLAMA_MODEL, temperature=0)
     triage_skill_text = load_skill("triage_skill.md")
-    
+
     triage_prompt = ChatPromptTemplate.from_messages([
         ("system", triage_skill_text),
         ("human", TRIAGE_HUMAN_TEMPLATE)
     ])
-    
+
     structured_llm = llm.with_structured_output(TriageDecision)
     triage_chain = triage_prompt | structured_llm
-    
+
     response = None
     last_error = None
+    # Catches any failure mode of structured output (validation errors, parsing
+    # errors, malformed tool-call responses), not just pydantic ValidationError.
     for _ in range(3):
         try:
             response = await triage_chain.ainvoke({
@@ -139,16 +102,43 @@ async def triage_node(state: AgentState) -> dict:
                 "sandbox_execution_logs": state["sandbox_execution_logs"]
             })
             break
-        except ValidationError as e:
+        except Exception as e:  # noqa: BLE001
             last_error = str(e)
-            
+
     if not response:
         return {
             "triage_action": "USER_ERROR",
             "root_cause_analysis": f"Failed to parse LLM response. Error: {last_error}"
         }
-    
+
     return {
         "triage_action": response.action,
         "root_cause_analysis": response.analysis
     }
+
+
+async def jira_node(state: AgentState) -> dict:
+    """Files a Jira ticket for issues that need human follow-up but aren't auto-fixable."""
+    result = await create_jira_ticket(
+        summary=f"[SentinelOps] {state['raw_issue_description'][:80]}",
+        description=(
+            f"Root Cause Analysis:\n{state.get('root_cause_analysis', 'N/A')}\n\n"
+            f"Execution Logs:\n{state.get('sandbox_execution_logs', 'N/A')}"
+        )
+    )
+    return {"jira_issue_key": result}
+
+
+async def slack_node(state: AgentState) -> dict:
+    """Notifies the reporter in Slack when triage decides the report is user error."""
+    channel_id = state.get("slack_channel_id")
+    if not channel_id:
+        # Report didn't come in through Slack (e.g. the raw API), nowhere to reply.
+        return {}
+
+    message = (
+        f"Hi, we looked into ticket `{state['ticket_id']}` — this looks like user error, not a bug.\n"
+        f"Analysis: {state.get('root_cause_analysis', 'N/A')}"
+    )
+    await send_slack_message(channel_id=channel_id, text=message)
+    return {}
