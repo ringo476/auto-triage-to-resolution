@@ -12,6 +12,7 @@ dependencies = [
     "httpx",
     "langgraph",
     "langchain-ollama",
+    "langchain-google-genai",
     "ollama",
     "mcp",
     "langchain-mcp-adapters",

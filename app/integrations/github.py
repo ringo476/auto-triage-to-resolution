@@ -14,7 +14,9 @@ async def commit_and_push_changes(repo_path: str, branch_name: str, commit_messa
     them to GitHub. This must run BEFORE creating the Pull Request.
     """
     commands = [
-        ["git", "checkout", "-b", branch_name],
+        # -B (not -b): resets the branch if it already exists, so a retried
+        # run for the same ticket_id doesn't fail with "branch already exists".
+        ["git", "checkout", "-B", branch_name],
         ["git", "add", "."],
         ["git", "commit", "-m", commit_message],
         ["git", "push", "origin", branch_name],

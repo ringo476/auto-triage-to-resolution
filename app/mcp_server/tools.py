@@ -27,7 +27,7 @@ def list_project_files(subdir: str = "") -> str:
     """
     target = (PROJECT_ROOT / subdir).resolve() if subdir else PROJECT_ROOT
 
-    if not str(target).startswith(str(PROJECT_ROOT)):
+    if not target.is_relative_to(PROJECT_ROOT):
         return "Error: Access denied. Cannot list outside project root."
 
     py_files = sorted(target.rglob("*.py"))
@@ -102,7 +102,7 @@ def read_file(file_path: str) -> str:
     """
     target = (PROJECT_ROOT / file_path).resolve()
 
-    if not str(target).startswith(str(PROJECT_ROOT)):
+    if not target.is_relative_to(PROJECT_ROOT):
         return "Error: Access denied. Cannot read outside project root."
 
     try:
@@ -129,7 +129,7 @@ def apply_patch(file_path: str, function_name: str, new_function_source: str) ->
     """
     target = (PROJECT_ROOT / file_path).resolve()
 
-    if not str(target).startswith(str(PROJECT_ROOT)):
+    if not target.is_relative_to(PROJECT_ROOT):
         return "Error: Access denied. Cannot write outside project root."
 
     try:
@@ -196,7 +196,7 @@ def write_file(file_path: str, content: str) -> str:
     """
     target = (PROJECT_ROOT / file_path).resolve()
 
-    if not str(target).startswith(str(PROJECT_ROOT)):
+    if not target.is_relative_to(PROJECT_ROOT):
         return "Error: Access denied. Cannot write outside project root."
 
     try:

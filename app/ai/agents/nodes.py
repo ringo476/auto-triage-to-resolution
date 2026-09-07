@@ -3,13 +3,12 @@ from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_ollama import ChatOllama
 from pydantic import BaseModel, Field
 
+from app.ai.llm import get_chat_llm
 from app.ai.mcp_runtime import run_tool_loop, sandbox_session
 from app.ai.prompts import SANDBOX_HUMAN_TEMPLATE, TRIAGE_HUMAN_TEMPLATE
 from app.ai.state import AgentState
-from app.config import settings
 from app.database import search_knowledge_base
 from app.integrations.jira import create_jira_ticket
 from app.integrations.slack import send_slack_message
@@ -47,7 +46,7 @@ async def rag_node(state: AgentState) -> dict:
 
 async def repro_node(state: AgentState) -> dict:
     async with sandbox_session(state["target_repo_path"]) as tools:
-        llm = ChatOllama(model=settings.OLLAMA_MODEL, temperature=0)
+        llm = get_chat_llm()
         bind_llm = llm.bind_tools(tools)
 
         repro_skill_text = load_skill("repro_skill.md")
@@ -79,7 +78,7 @@ async def triage_node(state: AgentState) -> dict:
     Evaluates execution logs and RAG context against triage_skill.md SOP
     to output a structured routing decision (USER_ERROR, AUTO_PR, or JIRA_TICKET).
     """
-    llm = ChatOllama(model=settings.OLLAMA_MODEL, temperature=0)
+    llm = get_chat_llm()
     triage_skill_text = load_skill("triage_skill.md")
 
     triage_prompt = ChatPromptTemplate.from_messages([

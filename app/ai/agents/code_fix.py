@@ -1,11 +1,23 @@
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
+import re
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.ai.agents.nodes import load_skill
+from app.ai.llm import get_chat_llm
 from app.ai.mcp_runtime import run_tool_loop, sandbox_session
 from app.ai.state import AgentState
 from app.config import settings
 from app.integrations.github import commit_and_push_changes, create_pull_request
+
+_SAFE_BRANCH_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _safe_branch_suffix(ticket_id: str) -> str:
+    """Sanitizes a caller-supplied ticket_id before it becomes part of a git
+    branch name / shell argument — ticket_id comes straight from the webhook
+    payload and could otherwise contain slashes, spaces, or `..`."""
+    cleaned = _SAFE_BRANCH_CHARS.sub("-", ticket_id).strip("-")
+    return cleaned or "unknown"
 
 
 async def code_fix_node(state: AgentState) -> dict:
@@ -16,7 +28,7 @@ async def code_fix_node(state: AgentState) -> dict:
     opens a GitHub PR against the target repo.
     """
     async with sandbox_session(state["target_repo_path"]) as tools:
-        llm = ChatOllama(model=settings.OLLAMA_MODEL, temperature=0)
+        llm = get_chat_llm()
         bind_llm = llm.bind_tools(tools)
 
         code_fix_skill_text = load_skill("code_fix_skill.md")
@@ -34,9 +46,17 @@ async def code_fix_node(state: AgentState) -> dict:
 
         await run_tool_loop(bind_llm, tools, new_messages)
 
-        proposed_fix_summary = new_messages[-1].content
+        # run_tool_loop can exit after max_turns while a tool call was still
+        # pending, in which case the *last* message is a raw ToolMessage, not
+        # the LLM's summary — walk back to find the last actual AI message.
+        last_ai_message = next(
+            (m for m in reversed(new_messages) if isinstance(m, AIMessage)), None
+        )
+        proposed_fix_summary = (
+            last_ai_message.content if last_ai_message else "No summary produced (tool loop ended mid-call)."
+        )
 
-        branch_name = f"sentinelops/fix-{state['ticket_id']}"
+        branch_name = f"sentinelops/fix-{_safe_branch_suffix(state['ticket_id'])}"
         commit_message = f"fix: automated resolution for {state['ticket_id']}"
 
         pushed = await commit_and_push_changes(

@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 import random
 import time
 
@@ -11,6 +12,7 @@ from app.ai.graph import app_graph
 from app.config import settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # 1. Define the expected incoming JSON payload
@@ -53,8 +55,9 @@ async def trigger_bug_triage(payload: BugReportPayload, x_webhook_secret: str | 
             "root_cause_analysis": final_state.get("root_cause_analysis", "N/A"),
             "pull_request_url": final_state.get("github_pr_url", "No PR generated")
         }
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Graph Execution Failed: {e!s}")
+    except Exception:
+        logger.exception("Graph execution failed for ticket_id=%s", payload.ticket_id)
+        raise HTTPException(status_code=500, detail="Graph execution failed. Check server logs.")
 
 
 def _verify_slack_signature(body: bytes, timestamp: str | None, signature: str | None) -> bool:
@@ -126,5 +129,6 @@ async def trigger_from_slack(
             )
         }
 
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Slack Ingestion Failed: {e!s}")
+    except Exception:
+        logger.exception("Slack ingestion failed")
+        raise HTTPException(status_code=500, detail="Slack ingestion failed. Check server logs.")

@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen2.5-coder:7b"
     OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
 
+    # Chat model backing the reasoning/tool-calling nodes (repro, triage, code fix).
+    # "ollama" (default, fully local) or "gemini" (needs GOOGLE_API_KEY).
+    # Embeddings always stay on Ollama regardless of this setting — see app/ai/llm.py.
+    LLM_PROVIDER: str = "ollama"
+    GOOGLE_API_KEY: str | None = None
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+
     # Database Settings (Postgres + pgvector)
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/triage_db"
 
